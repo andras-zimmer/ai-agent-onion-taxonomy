@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The AI Agent Onion Taxonomy</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #475569; }
+    @keyframes fadeSlideIn {
+      from { opacity: 0; transform: translateX(16px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+    .animate-fade-slide { animation: fadeSlideIn .3s ease-out; }
+    @keyframes connPulse {
+      0%, 100% { opacity: 0.6; }
+      50%      { opacity: 0.3; }
+    }
+    .conn-pulse { animation: connPulse 1.5s ease-in-out infinite; }
+  </style>
+</head>
+<body class="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center p-6 font-sans overflow-x-hidden">
+
+  <!-- Header -->
+  <div class="w-full max-w-[1200px] mb-8 relative z-50">
+    <h1 class="text-3xl font-bold mb-2 bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">
+      The AI Agent Onion Taxonomy
+    </h1>
+    <p class="text-slate-400 text-sm">
+      A layered architectural view from foundation to specialized roles.
+    </p>
+  </div>
+
+  <!-- Main Layout -->
+  <div class="flex flex-col lg:flex-row items-center lg:items-start justify-center gap-12 w-full max-w-[1280px]">
+    <!-- Left: Visualization -->
+    <div id="viz" class="relative shrink-0 select-none" style="width:680px;height:680px"></div>
+
+    <!-- Right: Info + Legend -->
+    <div class="flex flex-col gap-6 w-full max-w-[440px] z-50">
+      <div id="info-panel" class="w-full h-80 bg-slate-900/40 border border-slate-800 rounded-3xl p-6 relative overflow-hidden flex flex-col justify-center backdrop-blur-sm"></div>
+      <div id="legend" class="bg-slate-900/50 backdrop-blur-md border border-slate-800 rounded-3xl p-6"></div>
+    </div>
+  </div>
+
+  <!-- Lucide Icons (CDN) -->
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+  <script>
+  // ═══════════════════════════════════════════════
+  // DATA
+  // ═══════════════════════════════════════════════
+  const ARCHETYPES = [
+    { id:'direct',       title:'Direct Responder', icon:'message-square', color:'#6366f1',
+      job:'Interpret → answer (no external actions).',
+      loop:'Prompt → Generate → Reply',
+      bestFor:'Explanations, drafting, brainstorming, low-risk tasks.',
+      failure:'Confident but ungrounded answers / stale facts.' },
+    { id:'tool',         title:'Tool Caller',       icon:'wrench',         color:'#3b82f6',
+      job:'Decide when and how to call external tools; integrate results.',
+      loop:'Prompt → Tool? → Call → Observe → Reply',
+      bestFor:'Live data, calculations, databases, automations.',
+      failure:'Over/under-calling tools; brittle tool schemas.' },
+    { id:'react',        title:'ReAct Loop',        icon:'repeat',         color:'#06b6d4',
+      job:'Interleave reasoning and actions to handle uncertainty step-by-step.',
+      loop:'Think → Act → Observe → Think → Answer',
+      bestFor:'Multi-step info gathering, navigation, troubleshooting.',
+      failure:'Looping / local optimum / tool ping-pong.' },
+    { id:'planner',      title:'Planner',           icon:'layout',         color:'#8b5cf6',
+      job:'Turn high-level goals into an explicit decomposition or graph of steps.',
+      loop:'Goal → Decompose → Sequence → Plan',
+      bestFor:'Complex tasks where sequencing matters; long-horizon work.',
+      failure:'Beautiful plans that ignore real constraints or tools.' },
+    { id:'executor',     title:'Executor',          icon:'play',           color:'#ec4899',
+      job:'Focused on reliably carrying out pre-defined steps (often tool-heavy).',
+      loop:'Next Step → Tool → Observe → Complete',
+      bestFor:'Repetitive operations, workflow execution, "do the thing" tasks.',
+      failure:'Getting stuck on a bad step; silent partial completion.' },
+    { id:'planexec',     title:'Plan-Execute',      icon:'workflow',       color:'#f43f5e',
+      job:'Separates strategy from tactics; supports replanning based on outcomes.',
+      loop:'Plan → Execute → Check → Replan? → Finish',
+      bestFor:'High-stakes automation where predictability matters.',
+      failure:'Plan drift; mismatch between plan language and reality.' },
+    { id:'reflective',   title:'Reflective',        icon:'refresh-cw',     color:'#10b981',
+      job:'Use feedback to critique and improve its own next attempt.',
+      loop:'Attempt → Feedback → Reflect → Retry',
+      bestFor:'Iterative tasks: coding, writing, search strategies.',
+      failure:'Overfitting to own critiques; navel-gazing loops.' },
+    { id:'orchestrator', title:'Orchestrator',      icon:'users',          color:'#f59e0b',
+      job:'Route work to role-based specialists; merge outputs; enforce policy.',
+      loop:'Route → Delegate → Aggregate → Decide',
+      bestFor:'Mixed workloads (Research + Coder + Writer).',
+      failure:'Coordination overhead; conflicting specialist outputs.' },
+  ];
+
+  const APPLIED_ROLES = [
+    { id:'disc', role:'Discoverer',   icon:'compass',        parents:['react','planner'],       badges:['retrieval','memory'],
+      whatItDoes:'Maps uncharted territory (repos, docs) to find structure and entrypoints.',
+      artifact:'System map, module graph, and concept definitions' },
+    { id:'libr', role:'Librarian',    icon:'book-open',      parents:['executor','tool'],       badges:['tools','retrieval'],
+      whatItDoes:'Catalogues, chunks, and documents items for efficient indexing and retrieval.',
+      artifact:'Searchable index + metadata catalog + documentation' },
+    { id:'res',  role:'Researcher',   icon:'microscope',     parents:['tool','react'],          badges:['retrieval','eval'],
+      whatItDoes:'Probes external sources to gather evidence, citations, and raw data.',
+      artifact:'Annotated source list and evidence table' },
+    { id:'syn',  role:'Synthesizer',  icon:'file-text',      parents:['direct','reflective'],   badges:['eval'],
+      whatItDoes:'Distills complex, fragmented evidence into a coherent and cited narrative.',
+      artifact:'Executive memo/brief with claims mapped to sources' },
+    { id:'ana',  role:'Analyst',      icon:'bar-chart-3',    parents:['planner','tool'],        badges:['memory'],
+      whatItDoes:'Extracts deep patterns, thematic insights, and potential risks from data.',
+      artifact:'Findings report + prioritized hypotheses' },
+    { id:'ver',  role:'Verifier',     icon:'check-circle-2', parents:['tool','reflective'],     badges:['retrieval','eval'],
+      whatItDoes:'Cross-checks claims against ground truth sources to find contradictions.',
+      artifact:'Accuracy verdicts + evidence-backed contradiction reports' },
+    { id:'rou',  role:'Router',       icon:'chevron-right',  parents:['orchestrator','tool'],   badges:['multiagent','guardrails'],
+      whatItDoes:'Classifies requests and orchestrates handoffs to specialized agents.',
+      artifact:'Task framing + handoff decision + priority labels' },
+    { id:'imp',  role:'Implementer',  icon:'terminal',       parents:['planexec','reflective'], badges:['sandbox','tools'],
+      whatItDoes:'Writes and executes code to build features or apply complex changes.',
+      artifact:'PR-ready code + technical rationale + execution logs' },
+    { id:'dbg',  role:'Debugger',     icon:'bug',            parents:['react','reflective'],    badges:['sandbox','eval'],
+      whatItDoes:'Reproduces bugs, isolates root causes, and generates iterative patches.',
+      artifact:'Repro steps + root cause analysis + verified patch' },
+    { id:'mon',  role:'Monitor',      icon:'eye',            parents:['tool','executor'],       badges:['tools','memory'],
+      whatItDoes:'Continuously observes system outputs for drift, failures, or regressions.',
+      artifact:'Incident alerts + health status summaries' },
+    { id:'pm',   role:'Project Mgr',  icon:'clipboard-list', parents:['planner','orchestrator'],badges:['multiagent'],
+      whatItDoes:'Decomposes high-level goals into milestones, tasks, and assignments.',
+      artifact:'Task graph + project milestones + criteria' },
+    { id:'gr',   role:'Guardrail',    icon:'shield-alert',   parents:['direct','tool'],         badges:['guardrails','human'],
+      whatItDoes:'Enforces safety, security, and organizational policy constraints on actions.',
+      artifact:'Compliance verdict + security audit log' },
+  ];
+
+  const BADGES = {
+    tools:      { icon:'wrench',       color:'bg-blue-500',    label:'Tools' },
+    retrieval:  { icon:'database',     color:'bg-indigo-500',  label:'Retrieval' },
+    memory:     { icon:'hard-drive',   color:'bg-purple-500',  label:'Memory' },
+    sandbox:    { icon:'terminal',     color:'bg-cyan-500',    label:'Sandbox' },
+    multiagent: { icon:'users',        color:'bg-orange-500',  label:'Multi-Agent' },
+    human:      { icon:'user-check',   color:'bg-amber-500',   label:'Human Check' },
+    guardrails: { icon:'shield-check', color:'bg-slate-500',   label:'Guardrails' },
+    eval:       { icon:'search',       color:'bg-emerald-500', label:'Eval/QA' },
+  };
+
+  // ═══════════════════════════════════════════════
+  // LAYOUT MATH
+  // ═══════════════════════════════════════════════
+  const SIZE = 680, CENTER = SIZE / 2, R1 = 125, R2 = 265;
+
+  const archetypePos = ARCHETYPES.map((a, i) => {
+    const angle = (i / ARCHETYPES.length) * 2 * Math.PI - Math.PI / 2;
+    return { ...a, x: CENTER + R1 * Math.cos(angle), y: CENTER + R1 * Math.sin(angle) };
+  });
+
+  const appliedPos = APPLIED_ROLES.map((r, i) => {
+    const angle = (i / APPLIED_ROLES.length) * 2 * Math.PI - Math.PI / 2;
+    return { ...r, x: CENTER + R2 * Math.cos(angle), y: CENTER + R2 * Math.sin(angle) };
+  });
+
+  // ═══════════════════════════════════════════════
+  // STATE + CACHED ELEMENT REFS
+  // ═══════════════════════════════════════════════
+  let hoveredRole = null;
+  let hoveredArchetype = null;
+
+  const archEls = {};    // outer wrappers
+  const archInners = {}; // circle divs
+  const roleEls = {};    // outer wrappers
+  const roleCards = {};  // card divs
+
+  // ═══════════════════════════════════════════════
+  // BUILD VISUALIZATION
+  // ═══════════════════════════════════════════════
+  function buildViz() {
+    const viz = document.getElementById('viz');
+
+    // --- SVG layer ---
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('width', SIZE);
+    svg.setAttribute('height', SIZE);
+    svg.className = 'absolute inset-0 pointer-events-none';
+    svg.id = 'viz-svg';
+
+    [R1, R2].forEach(r => {
+      const c = document.createElementNS(ns, 'circle');
+      c.setAttribute('cx', CENTER); c.setAttribute('cy', CENTER); c.setAttribute('r', r);
+      c.setAttribute('fill', 'none'); c.setAttribute('stroke', '#1e293b');
+      c.setAttribute('stroke-width', '1'); c.setAttribute('stroke-dasharray', '4 4');
+      svg.appendChild(c);
+    });
+
+    const connG = document.createElementNS(ns, 'g');
+    connG.id = 'connections';
+    svg.appendChild(connG);
+    viz.appendChild(svg);
+
+    // --- Center node ---
+    viz.insertAdjacentHTML('beforeend', `
+      <div class="absolute border-4 border-slate-800 bg-slate-900 rounded-full flex flex-col items-center justify-center shadow-2xl z-50 group transition-all duration-300"
+           style="width:130px;height:130px;top:${CENTER - 65}px;left:${CENTER - 65}px">
+        <div class="p-3 bg-indigo-500/20 rounded-full mb-1 group-hover:scale-110 transition-transform">
+          <i data-lucide="cpu" style="width:32px;height:32px" class="text-indigo-400"></i>
+        </div>
+        <span class="text-[10px] font-bold text-indigo-300 uppercase tracking-tighter">Foundation</span>
+        <span class="text-xs font-bold text-white">LLM + Tools</span>
+      </div>`);
+
+    // --- Archetype nodes (ring 1) ---
+    archetypePos.forEach(a => {
+      const div = document.createElement('div');
+      div.className = 'absolute z-40 transition-all duration-300 cursor-pointer';
+      div.style.cssText = `top:${a.y - 28}px;left:${a.x - 28}px;`;
+      div.innerHTML = `
+        <div class="arch-inner w-14 h-14 rounded-full flex items-center justify-center border-2 shadow-lg backdrop-blur-md transition-all"
+             style="background-color:rgba(15,23,42,0.85);border-color:${a.color};color:${a.color};">
+          <i data-lucide="${a.icon}" style="width:20px;height:20px"></i>
+        </div>
+        <div class="absolute top-16 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-bold uppercase tracking-tighter"
+             style="color:${a.color}">
+          ${a.title}
+        </div>`;
+      div.addEventListener('mouseenter', () => { hoveredArchetype = a.id; update(); });
+      div.addEventListener('mouseleave', () => { hoveredArchetype = null; update(); });
+      viz.appendChild(div);
+
+      archEls[a.id] = div;
+      archInners[a.id] = div.querySelector('.arch-inner');
+    });
+
+    // --- Applied-role nodes (ring 2) ---
+    appliedPos.forEach(r => {
+      const div = document.createElement('div');
+      div.className = 'absolute z-30 transition-all duration-300';
+      div.style.cssText = `top:${r.y - 45}px;left:${r.x - 60}px;`;
+
+      const badgesHTML = r.badges.map(b => {
+        const bd = BADGES[b];
+        return `<div class="w-4 h-4 rounded-full flex items-center justify-center ${bd.color} text-white shadow-sm" title="${bd.label}">
+                  <i data-lucide="${bd.icon}" style="width:12px;height:12px"></i>
+                </div>`;
+      }).join('');
+
+      div.innerHTML = `
+        <div class="role-card w-[120px] bg-slate-900 border border-slate-800 rounded-xl p-3 shadow-xl transition-all cursor-pointer">
+          <div class="flex items-center gap-2 mb-1.5">
+            <div class="text-slate-400">
+              <i data-lucide="${r.icon}" style="width:14px;height:14px"></i>
+            </div>
+            <span class="text-[11px] font-bold text-slate-100 truncate">${r.role}</span>
+          </div>
+          <div class="flex flex-wrap gap-1 mt-auto">${badgesHTML}</div>
+        </div>`;
+      div.addEventListener('mouseenter', () => { hoveredRole = r.id; update(); });
+      div.addEventListener('mouseleave', () => { hoveredRole = null; update(); });
+      viz.appendChild(div);
+
+      roleEls[r.id] = div;
+      roleCards[r.id] = div.querySelector('.role-card');
+    });
+  }
+
+  // ═══════════════════════════════════════════════
+  // BUILD LEGEND
+  // ═══════════════════════════════════════════════
+  function buildLegend() {
+    const legend = document.getElementById('legend');
+    const items = Object.entries(BADGES).map(([, def]) => `
+      <div class="flex items-center gap-3 group cursor-help">
+        <div class="p-2 rounded-lg ${def.color} group-hover:scale-110 transition-transform shadow-lg text-white">
+          <i data-lucide="${def.icon}" style="width:12px;height:12px"></i>
+        </div>
+        <span class="text-[10px] font-bold text-slate-400 uppercase group-hover:text-slate-200 transition-colors tracking-tight">
+          ${def.label}
+        </span>
+      </div>`).join('');
+
+    legend.innerHTML = `
+      <div class="mb-4 flex items-center gap-2">
+        <div class="h-4 w-1 bg-emerald-500 rounded-full"></div>
+        <h2 class="text-xs font-bold uppercase tracking-widest text-slate-400">Capability Facets</h2>
+      </div>
+      <div class="grid grid-cols-2 gap-y-4 gap-x-2">${items}</div>`;
+  }
+
+  // ═══════════════════════════════════════════════
+  // INFO PANEL
+  // ═══════════════════════════════════════════════
+  function updateInfoPanel() {
+    const panel = document.getElementById('info-panel');
+    const roleData = hoveredRole ? appliedPos.find(p => p.id === hoveredRole) : null;
+    const archData = !hoveredRole && hoveredArchetype
+      ? ARCHETYPES.find(a => a.id === hoveredArchetype) : null;
+
+    if (roleData) {
+      const parentTags = roleData.parents.map(pId => {
+        const p = ARCHETYPES.find(a => a.id === pId);
+        return `<span class="text-[9px] px-2 py-0.5 rounded-full border border-slate-700 text-slate-400 font-semibold uppercase tracking-tighter">${p ? p.title : pId}</span>`;
+      }).join('');
+
+      panel.innerHTML = `
+        <div class="animate-fade-slide h-full flex flex-col">
+          <div class="flex items-center gap-3 mb-4">
+            <div class="p-2.5 bg-indigo-500/10 rounded-xl text-indigo-400">
+              <i data-lucide="${roleData.icon}" style="width:28px;height:28px"></i>
+            </div>
+            <div>
+              <h3 class="text-xl font-bold text-white uppercase tracking-wider">${roleData.role}</h3>
+              <div class="flex flex-wrap gap-2 mt-1.5">${parentTags}</div>
+            </div>
+          </div>
+          <div class="space-y-5 flex-grow overflow-y-auto pr-2 custom-scrollbar">
+            <div>
+              <span class="text-[10px] font-bold text-slate-500 uppercase block mb-2 flex items-center gap-1.5">
+                <i data-lucide="info" style="width:14px;height:14px"></i> Role Objective
+              </span>
+              <p class="text-sm text-slate-200 leading-relaxed font-medium">${roleData.whatItDoes}</p>
+            </div>
+            <div class="bg-indigo-500/5 p-4 rounded-2xl border border-indigo-500/10">
+              <span class="text-[10px] font-bold text-indigo-400 uppercase block mb-2 flex items-center gap-1.5">
+                <i data-lucide="box" style="width:14px;height:14px"></i> Primary Artifacts
+              </span>
+              <p class="text-sm text-indigo-100 italic font-medium leading-snug">${roleData.artifact}</p>
+            </div>
+          </div>
+        </div>`;
+
+    } else if (archData) {
+      panel.innerHTML = `
+        <div class="animate-fade-slide h-full flex flex-col">
+          <div class="flex items-center gap-3 mb-4">
+            <div class="p-2.5 rounded-xl" style="background-color:${archData.color}22;color:${archData.color}">
+              <i data-lucide="${archData.icon}" style="width:28px;height:28px"></i>
+            </div>
+            <div>
+              <h3 class="text-xl font-bold uppercase tracking-wider" style="color:${archData.color}">${archData.title}</h3>
+              <div class="flex items-center gap-2 mt-1.5 text-[10px] font-mono font-bold" style="color:${archData.color}cc">
+                <i data-lucide="zap" style="width:14px;height:14px"></i> ${archData.loop}
+              </div>
+            </div>
+          </div>
+          <div class="space-y-5 flex-grow overflow-y-auto pr-2 custom-scrollbar">
+            <div>
+              <span class="text-[10px] font-bold text-slate-500 uppercase block mb-2 flex items-center gap-1.5">
+                <i data-lucide="info" style="width:14px;height:14px"></i> Core Mechanism
+              </span>
+              <p class="text-sm text-slate-200 leading-relaxed font-medium">${archData.job}</p>
+              <p class="text-[11px] text-slate-400 mt-2.5 bg-slate-800/50 p-2 rounded-lg border border-slate-700/50">
+                <span class="text-indigo-400 font-bold uppercase tracking-tighter">Use Case:</span> ${archData.bestFor}
+              </p>
+            </div>
+            <div class="bg-red-500/5 p-4 rounded-2xl border border-red-500/10 mt-auto">
+              <span class="text-[10px] font-bold text-red-400 uppercase block mb-2 flex items-center gap-1.5">
+                <i data-lucide="alert-triangle" style="width:14px;height:14px"></i> Critical Failure Mode
+              </span>
+              <p class="text-sm text-red-200/80 italic font-medium">${archData.failure}</p>
+            </div>
+          </div>
+        </div>`;
+
+    } else {
+      panel.innerHTML = `
+        <div class="flex flex-col items-center justify-center text-slate-500 text-sm italic opacity-60 text-center px-12 h-full">
+          <div class="p-4 border border-dashed border-slate-700 rounded-full mb-4">
+            <i data-lucide="search" style="width:32px;height:32px"></i>
+          </div>
+          <p>Hover an agent node or core archetype to inspect architectural specifications.</p>
+        </div>`;
+    }
+  }
+
+  // ═══════════════════════════════════════════════
+  // UPDATE (connections, opacities, panel)
+  // ═══════════════════════════════════════════════
+  function update() {
+    const ns = 'http://www.w3.org/2000/svg';
+
+    // --- Connection lines ---
+    const connG = document.getElementById('connections');
+    connG.innerHTML = '';
+
+    if (hoveredRole) {
+      const role = appliedPos.find(p => p.id === hoveredRole);
+      if (role) {
+        role.parents.forEach(pId => {
+          const parent = archetypePos.find(a => a.id === pId);
+          if (!parent) return;
+          const line = document.createElementNS(ns, 'line');
+          line.setAttribute('x1', role.x);  line.setAttribute('y1', role.y);
+          line.setAttribute('x2', parent.x); line.setAttribute('y2', parent.y);
+          line.setAttribute('stroke', parent.color);
+          line.setAttribute('stroke-width', '2.5');
+          line.setAttribute('stroke-linecap', 'round');
+          line.setAttribute('stroke-dasharray', '5,5');
+          line.classList.add('conn-pulse');
+          connG.appendChild(line);
+        });
+      }
+    }
+
+    // --- Archetype node states ---
+    const activeRole = hoveredRole ? appliedPos.find(p => p.id === hoveredRole) : null;
+
+    archetypePos.forEach(a => {
+      const el = archEls[a.id];
+      const inner = archInners[a.id];
+      let opacity = 1, scale = 1, glow = false;
+
+      if (hoveredRole && activeRole) {
+        const isParent = activeRole.parents.includes(a.id);
+        opacity = isParent ? 1 : 0.1;
+        scale  = isParent ? 1.15 : 1;
+        glow   = isParent;
+      } else if (hoveredArchetype) {
+        opacity = a.id === hoveredArchetype ? 1 : 0.1;
+        scale  = a.id === hoveredArchetype ? 1.15 : 1;
+        glow   = a.id === hoveredArchetype;
+      }
+
+      el.style.opacity = opacity;
+      el.style.transform = `scale(${scale})`;
+      inner.style.boxShadow = glow ? `0 0 15px ${a.color}44` : 'none';
+    });
+
+    // --- Applied-role node states ---
+    appliedPos.forEach(r => {
+      const el   = roleEls[r.id];
+      const card = roleCards[r.id];
+
+      let opacity = 1;
+      if (hoveredArchetype) {
+        opacity = r.parents.includes(hoveredArchetype) ? 1 : 0.15;
+      }
+      el.style.opacity = opacity;
+      el.style.transform = hoveredRole === r.id ? 'scale(1.05)' : 'scale(1)';
+
+      if (hoveredRole === r.id) {
+        card.className = 'role-card w-[120px] bg-slate-800 border border-indigo-500 rounded-xl p-3 shadow-xl transition-all cursor-pointer';
+        card.style.boxShadow = '0 0 15px rgba(99,102,241,0.3)';
+      } else {
+        card.className = 'role-card w-[120px] bg-slate-900 border border-slate-800 rounded-xl p-3 shadow-xl transition-all cursor-pointer';
+        card.style.boxShadow = '';
+      }
+    });
+
+    // --- Info panel ---
+    updateInfoPanel();
+    lucide.createIcons();
+  }
+
+  // ═══════════════════════════════════════════════
+  // INIT
+  // ═══════════════════════════════════════════════
+  document.addEventListener('DOMContentLoaded', () => {
+    buildViz();
+    buildLegend();
+    updateInfoPanel();
+    lucide.createIcons();
+  });
+  </script>
+</body>
+</html>
